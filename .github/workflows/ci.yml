@@ -1,0 +1,49 @@
+name: Container and application
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Python checks
+        run: |
+          python -m pip install --require-hashes -r requirements-dev.txt
+          ruff check app tests
+          pytest -q
+      - name: Build image
+        run: docker build -t pc-monitor:test .
+      - name: Validate and start Compose
+        run: |
+          docker compose -f compose.yaml config --quiet
+          docker compose -f compose.yaml up -d
+          curl --retry 45 --retry-all-errors --retry-delay 2 -fsS http://localhost:8080/health
+      - name: Container smoke and dependency recovery
+        run: python tests/smoke.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Browser scenarios
+        working-directory: frontend
+        run: |
+          npm ci --ignore-scripts
+          npx playwright install --with-deps chromium
+          npm test
+      - name: Logs
+        if: failure()
+        run: docker compose -f compose.yaml logs --tail=150
+      - name: Stop this test stack
+        if: always()
+        run: docker compose -f compose.yaml down
