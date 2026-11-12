@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -35,12 +35,15 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Install Chromium
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
       - name: Browser scenarios
         working-directory: frontend
-        run: |
-          npm ci --ignore-scripts
-          npx playwright install --with-deps chromium
-          npm test
+        run: npm test -- --reporter=github
       - name: Logs
         if: failure()
         run: docker compose -f compose.yaml logs --tail=150
