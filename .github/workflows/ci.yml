@@ -20,7 +20,7 @@ jobs:
         run: |
           python -m pip install --require-hashes -r requirements-dev.txt
           ruff check app tests
-          pytest -q
+          python -m pytest -q
       - name: Build image
         run: docker build -t pc-monitor:test .
       - name: Validate and start Compose
