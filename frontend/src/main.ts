@@ -224,6 +224,7 @@ function fitCanvas() {
   frame.dataset.ready = 'true';
 }
 function scheduleFit() {
+  if (!CSS.supports('height', '100dvh')) $('main').style.height = `${innerHeight}px`;
   cancelAnimationFrame(fitFrame); fitFrame = requestAnimationFrame(fitCanvas);
 }
 function syncCanvasControls() {

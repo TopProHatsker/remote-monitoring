@@ -162,7 +162,7 @@ legend { font-size: 14px; color: var(--muted); margin-bottom: 12px; }
 
 /* Размер поля и карточек постоянен; под экран масштабируется общий контейнер */
 html, body, #app { height: 100%; overflow: hidden; overscroll-behavior: none; }
-main { height: 100dvh; max-width: none; padding-bottom: 5px; display: flex; flex-direction: column; overflow: hidden; }
+main { height: 100vh; height: 100dvh; max-width: none; padding-bottom: 5px; display: flex; flex-direction: column; overflow: hidden; }
 .toolbar-dock { flex-shrink: 0; }
 .toolbar-reveal { display: none; }
 .toolbar { flex-shrink: 0; flex-wrap: wrap; }
@@ -210,8 +210,8 @@ main { height: 100dvh; max-width: none; padding-bottom: 5px; display: flex; flex
 .presentation .toolbar-dock { position: fixed; inset: 0 0 auto; height: 10px; z-index: 10; }
 .presentation .toolbar { margin: 0; padding-inline: 17px; background: var(--page); transform: translateY(-100%); visibility: hidden; transition: transform .18s, visibility .18s; }
 .presentation .toolbar-reveal { display: block; position: absolute; inset: 0 0 auto; width: 100%; height: 10px; padding: 0; border: 0; background: transparent; }
-.presentation .toolbar-dock:has(:focus-visible) .toolbar,
 .presentation .toolbar-dock.toolbar-open .toolbar { transform: translateY(0); visibility: visible; }
+.presentation .toolbar-dock:has(:focus-visible) .toolbar { transform: translateY(0); visibility: visible; }
 @media (hover:hover) {
   .presentation .toolbar-dock:hover .toolbar { transform: translateY(0); visibility: visible; }
 }
