@@ -163,14 +163,16 @@ legend { font-size: 14px; color: var(--muted); margin-bottom: 12px; }
 /* Размер поля и карточек постоянен; под экран масштабируется общий контейнер */
 html, body, #app { height: 100%; overflow: hidden; overscroll-behavior: none; }
 main { height: 100dvh; max-width: none; padding-bottom: 5px; display: flex; flex-direction: column; overflow: hidden; }
+.toolbar-dock { flex-shrink: 0; }
+.toolbar-reveal { display: none; }
 .toolbar { flex-shrink: 0; flex-wrap: wrap; }
 .workspace { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 #dashboard-stage { flex: 1; min-height: 0; position: relative; overflow: hidden; }
-#canvas-frame { position: absolute; transform-origin: 0 0; outline: 1px solid var(--line); background: var(--white); }
+#canvas-frame { position: absolute; outline: 1px solid var(--line); background: var(--white); }
 #dashboard { width: 100%; min-height: 100%; }
 .editing .drag-handle { position: relative; flex: 1; user-select: none; touch-action: none; }
-.editing .drag-handle::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); height: calc(28px / var(--canvas-scale,1)); }
-.editing .grid-stack > .grid-stack-item > .ui-resizable-se { width: calc(28px / var(--canvas-scale,1)) !important; height: calc(28px / var(--canvas-scale,1)) !important; }
+.editing .drag-handle::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); height: 28px; }
+.editing .grid-stack > .grid-stack-item > .ui-resizable-se { width: 28px !important; height: 28px !important; }
 .editing #canvas-frame { background-image: linear-gradient(to right,var(--line) 1px,transparent 1px),linear-gradient(to bottom,var(--line) 1px,transparent 1px); background-size: 80px 80px; }
 .connection-banner { flex-shrink: 0; }
 .metric-card { padding: var(--fit-padding,16px); }
@@ -203,6 +205,18 @@ main { height: 100dvh; max-width: none; padding-bottom: 5px; display: flex; flex
 .canvas-size input[aria-invalid="true"] { border-color: var(--hot); }
 .presentation .connection-banner { padding-block: 7px; }
 .presentation .connection-banner span { display: none; }
+.presentation main { padding: 0; }
+.presentation #canvas-frame { outline: none; }
+.presentation .toolbar-dock { position: fixed; inset: 0 0 auto; height: 10px; z-index: 10; }
+.presentation .toolbar { margin: 0; padding-inline: 17px; background: var(--page); transform: translateY(-100%); visibility: hidden; transition: transform .18s, visibility .18s; }
+.presentation .toolbar-reveal { display: block; position: absolute; inset: 0 0 auto; width: 100%; height: 10px; padding: 0; border: 0; background: transparent; }
+.presentation .toolbar-dock:has(:focus-visible) .toolbar,
+.presentation .toolbar-dock.toolbar-open .toolbar { transform: translateY(0); visibility: visible; }
+@media (hover:hover) {
+  .presentation .toolbar-dock:hover .toolbar { transform: translateY(0); visibility: visible; }
+}
+.presentation .connection-banner { position: fixed; bottom: 0; left: 0; right: 0; z-index: 5; }
+.presentation .edit-hint { position: absolute; bottom: 0; z-index: 4; }
 @media (hover:none) { .button, .icon-button { min-height: 44px; } }
 @media (max-width:1099px) {
   main { padding-inline: 10px; }
@@ -242,3 +256,42 @@ main { height: 100dvh; max-width: none; padding-bottom: 5px; display: flex; flex
 @media (prefers-reduced-motion:reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
 }
+
+/* Масштабируем геометрию и шрифт, не растягивая готовый растровый слой браузера */
+#canvas-frame .metric-card { padding: calc(var(--fit-padding,16px) * var(--canvas-scale)); border-radius: calc(7px * var(--canvas-scale)); }
+#canvas-frame .chart.metric-card { padding: calc(8px * var(--canvas-scale)) calc(12px * var(--canvas-scale)); }
+#canvas-frame .card-heading { min-height: calc(26px * var(--canvas-scale)); gap: calc(6px * var(--canvas-scale)); }
+#canvas-frame .drag-handle { gap: calc(7px * var(--canvas-scale)); }
+#canvas-frame .drag-dots { font-size: calc(16px * var(--canvas-scale)); }
+#canvas-frame .card-heading h3 { font-size: calc(14px * var(--canvas-scale)); }
+#canvas-frame .card-settings { width: calc(27px * var(--canvas-scale)); height: calc(27px * var(--canvas-scale)); min-height: calc(27px * var(--canvas-scale)); min-width: 0; }
+#canvas-frame .card-settings svg { width: calc(16px * var(--canvas-scale)); height: calc(16px * var(--canvas-scale)); }
+#canvas-frame .card-device { font-size: calc(12px * var(--canvas-scale)); min-height: calc(17px * var(--canvas-scale)); margin-top: calc(3px * var(--canvas-scale)); }
+#canvas-frame .chart .card-device { font-size: calc(11px * var(--canvas-scale)); min-height: calc(15px * var(--canvas-scale)); }
+#canvas-frame .metric-reading { gap: calc(8px * var(--canvas-scale)); margin-top: calc(11px * var(--canvas-scale)); }
+#canvas-frame .metric-reading strong { font-size: calc(var(--fit-reading,38px) * var(--canvas-scale)); }
+#canvas-frame .metric-reading > span { font-size: calc(var(--fit-unit,15px) * var(--canvas-scale)); }
+#canvas-frame .card-heading-tools { gap: calc(6px * var(--canvas-scale)); }
+#canvas-frame .card-heading .metric-reading { margin: 0; gap: calc(5px * var(--canvas-scale)); }
+#canvas-frame .card-heading .metric-reading strong { font-size: calc(var(--header-reading,22px) * var(--canvas-scale)); }
+#canvas-frame .card-heading .metric-reading > span { font-size: calc(var(--header-reading,14px) * var(--canvas-scale)); }
+#canvas-frame .card-heading-tools { margin-left: auto; justify-content: flex-end; }
+#canvas-frame .card-heading .metric-reading { justify-content: flex-end; text-align: right; }
+#canvas-frame .number .metric-reading { position: absolute; inset: 0; margin: 0; align-items: center; justify-content: center; flex-wrap: nowrap; pointer-events: none; }
+#canvas-frame .number .card-bottom { margin-top: auto; }
+#canvas-frame .card-settings { display: none; }
+.editing #canvas-frame .card-settings { display: inline-flex; }
+#canvas-frame .card-visual { min-height: calc(65px * var(--canvas-scale)); margin-top: calc(5px * var(--canvas-scale)); }
+#canvas-frame .chart .card-visual { min-height: calc(8px * var(--canvas-scale)); margin-top: calc(4px * var(--canvas-scale)); }
+#canvas-frame .card-bottom { gap: calc(8px * var(--canvas-scale)); padding-top: calc(9px * var(--canvas-scale)); min-height: calc(25px * var(--canvas-scale)); font-size: calc(11px * var(--canvas-scale)); }
+#canvas-frame .chart .card-bottom { padding-top: calc(6px * var(--canvas-scale)); min-height: calc(21px * var(--canvas-scale)); }
+#canvas-frame .card-kind { font-size: calc(11px * var(--canvas-scale)); }
+#canvas-frame .gauge .card-visual { min-height: calc(32px * var(--canvas-scale)); gap: calc(9px * var(--canvas-scale)); }
+#canvas-frame .gauge-track { height: calc(6px * var(--canvas-scale)); border-radius: calc(2px * var(--canvas-scale)); }
+#canvas-frame .gauge-labels { font-size: calc(11px * var(--canvas-scale)); }
+#canvas-frame .fit-dense .card-heading { min-height: calc(20px * var(--canvas-scale)); }
+#canvas-frame .fit-dense .card-heading h3 { font-size: calc(12px * var(--canvas-scale)); }
+#canvas-frame .fit-dense .card-visual { min-height: calc(8px * var(--canvas-scale)); }
+#canvas-frame .fit-tiny .card-heading h3 { font-size: calc(10px * var(--canvas-scale)); }
+.editing #canvas-frame { background-size: calc(80px * var(--canvas-scale)) calc(80px * var(--canvas-scale)); }
+.editing #canvas-frame > .grid-stack > .grid-stack-item > .ui-resizable-se { bottom: calc(13px * var(--canvas-scale)) !important; right: calc(12px * var(--canvas-scale)) !important; }

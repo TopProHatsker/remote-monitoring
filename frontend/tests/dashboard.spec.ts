@@ -34,6 +34,7 @@ test('create, persist, configure and remove a widget', async ({ page }) => {
   await expect(page.locator('#connection')).toContainText('Онлайн');
   const card = page.locator('.metric-card').filter({ has: page.getByRole('heading', { name: 'Память для теста' }) });
   await expect(card).toBeVisible();
+  await revealToolbar(page);
   await page.locator('#edit').click();
   await card.getByRole('button', { name: 'Настроить Память для теста' }).click();
   await page.locator('#delete-widget').click();
@@ -79,12 +80,13 @@ test('viewport changes preserve the fixed cell layout', async ({ page }) => {
 
 test('editing allows moving and resizing cards', async ({ page }, testInfo) => {
   await page.locator('#canvas-rows').fill('24');
+  await revealToolbar(page);
   await page.locator('#edit').click();
   const card = page.locator('.grid-stack-item').first();
   const handle = card.locator('.drag-handle');
   const before = await card.getAttribute('gs-y');
   const box = (await handle.boundingBox())!;
-  const scale = await page.locator('#canvas-frame').evaluate(el => el.getBoundingClientRect().width / el.clientWidth);
+  const scale = await page.locator('#canvas-frame').evaluate(el => el.clientWidth / (Number(document.querySelector<HTMLInputElement>('#canvas-columns')!.value) * 80));
   if (testInfo.project.name !== 'desktop') {
     const cdp = await page.context().newCDPSession(page);
     const x = box.x + Math.min(20, box.width / 2), y = box.y + box.height / 2;
@@ -110,6 +112,7 @@ test('editing allows moving and resizing cards', async ({ page }, testInfo) => {
   await page.mouse.move(corner.x - 80 * scale, corner.y + 2 * 80 * scale, { steps: 16 });
   await page.mouse.up();
   await expect.poll(() => card.getAttribute('gs-h')).not.toBe(height);
+  await revealToolbar(page);
   await page.locator('#edit').click();
   await expect(card.locator('.ui-resizable-se')).toBeHidden();
 });
@@ -127,6 +130,14 @@ test('an unanswered request is bounded and does not freeze the editor', async ({
   await expect(page.locator('#connection')).toContainText('Онлайн');
 });
 
+async function revealToolbar(page: import('@playwright/test').Page) {
+  if (await page.evaluate(() => Boolean(document.fullscreenElement))) {
+    if (await page.evaluate(() => matchMedia('(hover:hover)').matches)) await page.mouse.move(5, 2);
+    else if (!await page.locator('.toolbar-dock').evaluate(el => el.classList.contains('toolbar-open'))) await page.locator('.toolbar-reveal').tap();
+    await expect.poll(() => page.locator('.toolbar').evaluate(el => el.getBoundingClientRect().top)).toBeGreaterThanOrEqual(0);
+  }
+}
+
 async function assertFits(page: import('@playwright/test').Page) {
   await expect.poll(() => page.evaluate(() => {
     const root = document.documentElement;
@@ -142,27 +153,31 @@ async function assertFits(page: import('@playwright/test').Page) {
 }
 
 test('Vitrina light and dark themes persist without decorative page chrome', async ({ page }) => {
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   expect(await page.locator('.brand, footer, .page-heading').count()).toBe(0);
   const before = await page.locator('.metric-card').count();
+  await revealToolbar(page);
   await page.locator('#theme').click();
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   await expect.poll(() => page.locator('.metric-card').first().evaluate(el => getComputedStyle(el).backgroundImage)).toBe('none');
   await page.reload();
   await expect(page.locator('#connection')).toContainText('Онлайн');
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-  await expect(page.locator('.metric-card')).toHaveCount(before);
-  await page.locator('#theme').click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await expect(page.locator('.metric-card')).toHaveCount(before);
+  await revealToolbar(page);
+  await page.locator('#theme').click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 });
 
 test('fullscreen fits the complete field through theme changes and connection failure', async ({ page }) => {
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('pc-monitor-board-v1')!).layout);
+  await revealToolbar(page);
   await page.locator('#fullscreen').click();
   await expect.poll(() => page.evaluate(() => Boolean(document.fullscreenElement))).toBeTruthy();
   await assertFits(page);
   await page.mouse.wheel(0, 500);
   expect(await page.evaluate(() => scrollY)).toBe(0);
+  await revealToolbar(page);
   await page.locator('#theme').click();
   await assertFits(page);
   await page.route('**/api/**', route => route.abort('failed'));
@@ -172,6 +187,7 @@ test('fullscreen fits the complete field through theme changes and connection fa
   await page.locator('#retry').click();
   await expect(page.locator('#connection')).toContainText('Онлайн');
   await assertFits(page);
+  await revealToolbar(page);
   await page.locator('#fullscreen').click();
   await expect.poll(() => page.evaluate(() => Boolean(document.fullscreenElement))).toBeFalsy();
   const after = await page.evaluate(() => JSON.parse(localStorage.getItem('pc-monitor-board-v1')!).layout);
@@ -191,6 +207,7 @@ test('fullscreen fits all 24 widgets with no clipped readings', async ({ page })
   await page.reload();
   await expect(page.locator('#connection')).toContainText('Онлайн');
   await expect(page.locator('.metric-card')).toHaveCount(24);
+  await revealToolbar(page);
   await page.locator('#fullscreen').click();
   await expect.poll(() => page.evaluate(() => Boolean(document.fullscreenElement))).toBeTruthy();
   await assertFits(page);
@@ -228,6 +245,7 @@ test('create number, gauge and a two-series network chart from available sources
   const config = await page.evaluate(() => JSON.parse(localStorage.getItem('pc-monitor-board-v1')!));
   expect(config.widgets.find((w: { title: string }) => w.title === cases[2].title).metrics).toHaveLength(2);
   expect(config.widgets.find((w: { title: string }) => w.title === cases[1].title).threshold).toBe(70);
+  await revealToolbar(page);
   await page.locator('#fullscreen').click();
   await expect.poll(() => page.evaluate(() => Boolean(document.fullscreenElement))).toBeTruthy();
   await assertFits(page);
@@ -260,11 +278,15 @@ test('fullscreen editing follows the same cells at the scaled pointer position',
   });
   await page.reload();
   await expect(page.locator('#connection')).toContainText('Онлайн');
+  await revealToolbar(page);
   await page.locator('#fullscreen').click();
   await expect.poll(() => page.evaluate(() => Boolean(document.fullscreenElement))).toBeTruthy();
+  await revealToolbar(page);
   await page.locator('#edit').click();
-  const scale = await page.locator('#canvas-frame').evaluate(el => el.getBoundingClientRect().width / el.clientWidth);
+  const scale = await page.locator('#canvas-frame').evaluate(el => el.clientWidth / (Number(document.querySelector<HTMLInputElement>('#canvas-columns')!.value) * 80));
   const card = page.locator('.grid-stack-item').first();
+  await page.mouse.click(1, 400);
+  await expect.poll(() => page.locator('.toolbar').evaluate(el => el.getBoundingClientRect().bottom)).toBeLessThanOrEqual(0);
   const box = (await card.locator('.drag-handle').boundingBox())!;
   const x = box.x + Math.min(15, box.width / 2), y = box.y + box.height / 2;
   if (testInfo.project.name === 'desktop') {
@@ -284,6 +306,7 @@ test('fullscreen editing follows the same cells at the scaled pointer position',
   await expect(card).toHaveAttribute('gs-y', '3');
   await assertFits(page);
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('pc-monitor-board-v1')!).layout);
+  await revealToolbar(page);
   await page.locator('#fullscreen').click();
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('pc-monitor-board-v1')!).layout)).toEqual(saved);
 });

@@ -13,7 +13,7 @@ type LegacyBoard = { version: 1; widgets: Widget[]; layouts: Record<string, Reco
 type Snapshot = { sample_time: number; hostname: string; values: Record<string, number | null> };
 type Catalog = { hostname: string; metrics: Metric[] };
 type Connection = 'connecting' | 'live' | 'checking' | 'offline' | 'source';
-type Runtime = { element: HTMLElement; chart?: uPlot; observer?: ResizeObserver };
+type Runtime = { element: HTMLElement; chart?: uPlot; chartScale?: number; observer?: ResizeObserver };
 
 const $ = <T extends HTMLElement = HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
 const icons = {
@@ -38,6 +38,7 @@ const cellSize = 80;
 const storageKey = 'pc-monitor-board-v1';
 const uid = () => `w-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
 let presentation = false;
+let canvasScale = 1;
 let fitFrame = 0;
 let catalog: Metric[] = [];
 const portrait = innerHeight > innerWidth;
@@ -63,6 +64,8 @@ const histories = new Map<string, [number, number | null][]>();
 
 $('#app').innerHTML = `
   <main>
+    <div class="toolbar-dock">
+    <button class="toolbar-reveal" aria-label="Показать панель управления"><span class="sr-only">Показать панель управления</span></button>
     <header class="toolbar">
       <div class="machine-status"><h1 id="hostname" title="Имя машины">Подключение…</h1><span id="connection" class="status" role="status"><i></i><span>Подключаемся</span></span><span id="last-update" class="sr-only">Ожидаем первые измерения</span></div>
       <form id="canvas-size" class="canvas-size" aria-label="Размер поля в клетках">
@@ -76,6 +79,7 @@ $('#app').innerHTML = `
         <button class="icon-button" id="fullscreen" aria-label="Полный экран" title="Полный экран">${icon('full')}</button>
       </div>
     </header>
+    </div>
     <div class="connection-banner" id="banner" role="status" hidden><div><strong id="banner-title"></strong><span id="banner-text"></span></div><button id="retry" class="button small">Повторить ${icon('arrow')}</button></div>
     <section class="workspace" aria-label="Дашборд">
       <div id="edit-hint" class="edit-hint" hidden>Перетаскивайте карточки за заголовок. Потяните за угол, чтобы изменить размер. Настройки сохраняются на этом устройстве.</div>
@@ -192,21 +196,30 @@ function fitCanvas() {
   const stage = $('#dashboard-stage');
   const width = board.columns * cellSize, height = board.rows * cellSize;
   const scale = Math.min(Math.max(1, stage.clientWidth - 2) / width, Math.max(1, stage.clientHeight - 2) / height);
+  canvasScale = scale;
   document.documentElement.style.setProperty('--canvas-scale', String(scale));
   const frame = $('#canvas-frame');
-  frame.style.width = `${width}px`; frame.style.height = `${height}px`;
-  frame.style.transform = `scale(${scale})`;
-  frame.style.left = `${Math.max(0, (stage.clientWidth - width * scale) / 2)}px`;
-  frame.style.top = `${Math.max(0, (stage.clientHeight - height * scale) / 2)}px`;
-  for (const runtime of runtimes.values()) {
-    const h = runtime.element.clientHeight;
+  // Меняем реальные CSS-размеры: transform масштабировал уже нарисованный Canvas и текст
+  frame.style.width = `${width * scale}px`; frame.style.height = `${height * scale}px`;
+  frame.style.transform = 'none';
+  const dpr = window.devicePixelRatio || 1;
+  const snap = (v: number) => Math.round(v * dpr) / dpr;
+  frame.style.left = `${snap(Math.max(0, (stage.clientWidth - width * scale) / 2))}px`;
+  frame.style.top = `${snap(Math.max(0, (stage.clientHeight - height * scale) / 2))}px`;
+  grid.cellHeight(cellSize * scale); grid.margin(6 * scale);
+  for (const [id, runtime] of runtimes) {
+    const h = runtime.element.clientHeight / scale;
     runtime.element.classList.toggle('fit-dense', h < 200);
     runtime.element.classList.toggle('fit-tiny', h < 130);
-    const reading = Math.max(14, Math.min(38, h * .2, runtime.element.clientWidth * .2));
+    const reading = Math.max(14, Math.min(38, h * .2, runtime.element.clientWidth / scale * .2));
     runtime.element.style.setProperty('--fit-reading', `${reading}px`);
     runtime.element.style.setProperty('--fit-unit', `${Math.max(9, Math.min(15, reading * .45))}px`);
-    runtime.element.style.setProperty('--header-reading', `${Math.max(12, Math.min(22, runtime.element.clientWidth * .1))}px`);
+    runtime.element.style.setProperty('--header-reading', `${h < 130 ? 10 : h < 200 ? 12 : 14}px`);
     runtime.element.style.setProperty('--fit-padding', `${Math.max(3, Math.min(16, h * .06))}px`);
+    if (runtime.chart && Math.abs((runtime.chartScale || 1) - scale) > .0001) {
+      const widget = board.widgets.find(w => w.id === id)!;
+      createChart(widget, runtime); updateChart(widget, runtime);
+    }
   }
   frame.dataset.ready = 'true';
 }
@@ -225,9 +238,9 @@ function renderBoard() {
   if (grid) grid.destroy(false);
   $('#dashboard').replaceChildren();
   const columns = board.columns;
-  $('#canvas-frame').style.width = `${columns * cellSize}px`;
-  $('#canvas-frame').style.height = `${board.rows * cellSize}px`;
-  grid = GridStack.init({ column: columns, cellHeight: cellSize, margin: 6, animate: false,
+  $('#canvas-frame').style.width = `${columns * cellSize * canvasScale}px`;
+  $('#canvas-frame').style.height = `${board.rows * cellSize * canvasScale}px`;
+  grid = GridStack.init({ column: columns, cellHeight: cellSize * canvasScale, margin: 6 * canvasScale, animate: false,
     minRow: board.rows, maxRow: board.rows, float: true,
     handle: '.drag-handle', disableDrag: !editing, disableResize: !editing,
     alwaysShowResizeHandle: true, columnOpts: { breakpoints: [] } }, '#dashboard');
@@ -241,7 +254,7 @@ function renderBoard() {
     const content = document.createElement('article'); content.className = `grid-stack-item-content metric-card ${widget.type}`;
     content.style.setProperty('--accent', displayColor(widget.color));
     const reading = '<div class="metric-reading"><strong>—</strong><span></span></div>';
-    content.innerHTML = `<div class="card-heading"><div class="drag-handle"><span class="drag-dots">⠿</span><h3 title="${esc(widget.title)}">${esc(widget.title)}</h3></div><div class="card-heading-tools">${widget.type !== 'number' ? reading : ''}<button class="card-settings icon-button" aria-label="Настроить ${esc(widget.title)}">${icon('gear')}</button></div></div><div class="card-device"></div>${widget.type === 'number' ? reading : ''}<div class="card-visual"></div><div class="card-bottom"><span class="metric-note">Ожидаем измерения</span><span class="card-kind">${widget.type === 'chart' ? 'ИСТОРИЯ' : widget.type === 'gauge' ? 'ЗАПОЛНЕНИЕ' : 'ТЕКУЩЕЕ'}</span></div>`;
+    content.innerHTML = `<div class="card-heading"><div class="drag-handle"><span class="drag-dots">⠿</span><h3 title="${esc(widget.title)}">${esc(widget.title)}</h3></div><div class="card-heading-tools"><button class="card-settings icon-button" aria-label="Настроить ${esc(widget.title)}">${icon('gear')}</button>${widget.type !== 'number' ? reading : ''}</div></div><div class="card-device"></div>${widget.type === 'number' ? reading : ''}<div class="card-visual"></div><div class="card-bottom"><span class="metric-note">Ожидаем измерения</span><span class="card-kind">${widget.type === 'chart' ? 'ИСТОРИЯ' : widget.type === 'gauge' ? 'ЗАПОЛНЕНИЕ' : 'ТЕКУЩЕЕ'}</span></div>`;
     content.querySelector('button')!.addEventListener('click', () => openSettings(widget));
     el.append(content); grid.el.append(el);
     grid.makeWidget(el, { ...position, id: widget.id, minW: 1, minH: 2, maxH: board.rows });
@@ -260,21 +273,24 @@ function renderBoard() {
 }
 function createChart(widget: Widget, runtime: Runtime) {
   const host = runtime.element.querySelector<HTMLElement>('.card-visual')!;
+  runtime.observer?.disconnect(); runtime.chart?.destroy(); host.replaceChildren();
+  const scale = canvasScale;
+  runtime.chartScale = scale;
   const axesColor = getComputedStyle(document.documentElement).getPropertyValue('--muted').trim();
   const gridColor = getComputedStyle(document.documentElement).getPropertyValue('--chart-grid').trim();
   const lineColor = displayColor(widget.color);
   const lines = widget.metrics.map((id, i) => ({ label: meta(id)?.title || 'Показатель', stroke: i ? axesColor : lineColor,
-    width: 1.8, fill: i ? undefined : `${lineColor}12`, spanGaps: false,
+    width: Math.max(.6, 1.8 * scale), fill: i ? undefined : `${lineColor}12`, spanGaps: false,
     value: (_: uPlot, v: number) => valueLabel(v, meta(id)?.unit).join(' ') }));
   runtime.chart = new uPlot({
     width: Math.max(20, host.clientWidth), height: Math.max(12, host.clientHeight),
-    padding: [14, 8, 0, 4], legend: { show: false },
+    padding: [14 * scale, 8 * scale, 0, 4 * scale], legend: { show: false },
     cursor: { drag: { x: false, y: false } },
     scales: { x: { time: true }, y: { auto: true } },
-    axes: [{ stroke: axesColor, grid: { show: false }, ticks: { show: false }, size: 24,
-      font: '10px system-ui', values: (_u, values) => values.map(v => new Date(v * 1000).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })) },
-    { stroke: axesColor, grid: { stroke: gridColor, width: 1 }, ticks: { show: false }, size: 52,
-      font: '10px system-ui', values: (_u, values) => values.map(v => valueLabel(v, meta(widget.metrics[0])?.unit).join(' ')) }],
+    axes: [{ stroke: axesColor, grid: { show: false }, ticks: { show: false }, size: 24 * scale, gap: 5 * scale,
+      font: `${Math.max(1, Math.round(10 * scale))}px system-ui`, values: (_u, values) => values.map(v => new Date(v * 1000).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })) },
+    { stroke: axesColor, grid: { stroke: gridColor, width: 1 }, ticks: { show: false }, size: 52 * scale, gap: 5 * scale,
+      font: `${Math.max(1, Math.round(10 * scale))}px system-ui`, values: (_u, values) => values.map(v => valueLabel(v, meta(widget.metrics[0])?.unit).join(' ')) }],
     series: [{}, ...lines],
   }, [[] as number[], ...widget.metrics.map(() => [] as (number | null)[])], host);
   runtime.observer = new ResizeObserver(() => runtime.chart?.setSize({ width: Math.max(20, host.clientWidth), height: Math.max(12, host.clientHeight) }));
@@ -492,9 +508,25 @@ $('#fullscreen').addEventListener('click', async () => {
     else toast('Этот браузер не поддерживает полноэкранный режим.');
   } catch { toast('Браузер не разрешил полноэкранный режим.'); }
 });
+const toolbarDock = $('.toolbar-dock');
+$('.toolbar-reveal').addEventListener('click', () => {
+  toolbarDock.classList.toggle('toolbar-open');
+  if (!toolbarDock.classList.contains('toolbar-open')) $('.toolbar-reveal').blur();
+});
+toolbarDock.addEventListener('pointerleave', event => {
+  if (event.pointerType === 'mouse') toolbarDock.classList.remove('toolbar-open');
+});
+document.addEventListener('pointerdown', event => {
+  if (presentation && !toolbarDock.contains(event.target as Node)) {
+    toolbarDock.classList.remove('toolbar-open');
+    if (toolbarDock.contains(document.activeElement)) (document.activeElement as HTMLElement).blur();
+  }
+});
 document.addEventListener('fullscreenchange', () => {
   presentation = Boolean(document.fullscreenElement);
   document.documentElement.classList.toggle('presentation', presentation);
+  toolbarDock.classList.remove('toolbar-open');
+  if (toolbarDock.contains(document.activeElement)) (document.activeElement as HTMLElement).blur();
   scheduleFit();
   $('#fullscreen').setAttribute('aria-label', presentation ? 'Выйти из полного экрана' : 'Полный экран');
   $('#fullscreen').title = presentation ? 'Выйти из полного экрана' : 'Полный экран';
@@ -540,6 +572,6 @@ for (const id of ['#canvas-columns', '#canvas-rows']) {
 }
 $('#canvas-size').addEventListener('submit', event => { event.preventDefault(); changeCanvasSize(true); });
 new ResizeObserver(() => scheduleFit()).observe($('#dashboard-stage'));
-try { applyTheme(localStorage.getItem('pc-monitor-theme') === 'dark' ? 'dark' : 'light', false); }
-catch { applyTheme('light', false); }
+try { applyTheme(localStorage.getItem('pc-monitor-theme') === 'light' ? 'light' : 'dark', false); }
+catch { applyTheme('dark', false); }
 initialized = readBoard(); renderBoard(); refresh();
