@@ -1,0 +1,86 @@
+name: pc-monitor
+
+services:
+  app:
+    build: .
+    ports:
+      - "${MONITOR_BIND:-0.0.0.0}:${MONITOR_PORT:-8080}:8000"
+    environment:
+      PROMETHEUS_URL: http://prometheus:9090
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    logging: &logging
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=24h
+      - --storage.tsdb.retention.size=512MB
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - history:/prometheus
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    depends_on:
+      node-exporter:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--spider", "http://127.0.0.1:9090/-/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    logging: *logging
+
+  node-exporter:
+    image: prom/node-exporter:v1.9.1
+    command:
+      - --path.rootfs=/host
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --web.listen-address=:9100
+      - --collector.disable-defaults
+      - --collector.cpu
+      - --collector.meminfo
+      - --collector.filesystem
+      - --collector.diskstats
+      - --collector.netdev
+      - --collector.netclass
+      - --collector.uname
+      - --collector.stat
+      - --collector.hwmon
+      - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|var/lib/docker|var/lib/containers)($|/)
+    network_mode: host
+    pid: host
+    volumes:
+      - /:/host:ro,rslave
+    restart: unless-stopped
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    logging: *logging
+
+volumes:
+  history:
